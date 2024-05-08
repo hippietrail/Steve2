@@ -28,6 +28,7 @@
 #include "disk.h"
 #include "6502.h"
 #include "common.h"
+#include "dsk2woz.h"
 
 
 WOZread_t WOZread = {0};
@@ -37,6 +38,7 @@ WOZread_t WOZwrite = {0};
 unsigned trackNextOffset = 0;
 unsigned trackOffset = 0;
 unsigned bitOffset = 0;
+unsigned bitShift = 0;
 uint64_t clkelpased;
 
 int extraForward = 6; // we search for 7 bit high a bit further to speed up disk read...
@@ -48,7 +50,8 @@ uint8_t * woz_file_buffer = NULL;
 woz_header_t * woz_header;
 woz_chunk_header_t * woz_chunk_header;
 woz_tmap_t * woz_tmap;
-woz1_trks_t * woz_trks;
+woz1_trks_t * woz1_trks;
+woz2_trks_t * woz2_trks;
 int track_loaded = -1;
 
 
@@ -146,11 +149,59 @@ static uint32_t crc32(const uint8_t *buf, size_t size) {
 }
 
 
+static uint32_t getTrackBitsUsed(int track) {
+    switch ( woz_header->magic ) {
+        case WOZ1_MAGIC:
+            return (*woz1_trks)[track].bytes_used * 8 + 1;
+
+        case WOZ2_MAGIC:
+            return (*woz2_trks)[track].bit_count;
+
+        default:
+            dbgPrintf("Track Bits ERROR: Invalid WOZ Magic!\n");
+            return 0;
+    }
+}
+
+
+static uint16_t getTrackBytesUsed(int track) {
+    uint32_t bits = getTrackBitsUsed(track);
+    uint16_t bytes = bits / 8;
+    
+    if (bits % 8) {
+        bytes++;
+    }
+    
+    return bytes;
+}
+
+
+static uint8_t * getTrackDataPtr(int track) {
+    switch ( woz_header->magic ) {
+        case WOZ1_MAGIC:
+            return (*woz1_trks)[track].data;
+
+        case WOZ2_MAGIC: {
+            uint16_t startingBlock = (*woz2_trks)[track].starting_block;
+//            uint16_t blockCount = (*woz2_trks)[track].block_count;
+            int dataOffs = startingBlock * 512;
+            return woz_file_buffer + dataOffs;
+        }
+
+        default:
+            dbgPrintf("Track Data ERROR: Invalid WOZ Magic!\n");
+            return NULL;
+    }
+}
+
+
 void woz_loadTrack_old( int track ) {
     trackEntry_t reg = {0};
+    
+    uint8_t * trkdata = getTrackDataPtr(track);
 
-    reg.shift = (*woz_trks)[track].data[0];
-    reg.data =  (*woz_trks)[track].data[1];
+    reg.shift = trkdata[0];
+    reg.data =  trkdata[1];
     prepared_track[0] = reg;
 
     for ( int offs = 1; offs < WOZ1_TRACK_BYTE_COUNT; offs++ ) {
@@ -163,7 +214,7 @@ void woz_loadTrack_old( int track ) {
             reg.shift16 <<= 1;
         }
         
-        reg.data = (*woz_trks)[track].data[ (offs + 1) % WOZ1_TRACK_BYTE_COUNT ];
+        reg.data = trkdata[ (offs + 1) % WOZ1_TRACK_BYTE_COUNT ];
         prepared_track[offs] = reg;
     }
 }
@@ -173,13 +224,19 @@ typedef enum wozTrackState_e {
     wozTrackState_Start = 0,
     wozTrackState_D5,
     wozTrackState_D5_AA,
-    wozTrackState_D5_AA_96,
+    wozTrackState_D5_AA_B5, // sector header for DOS 3.1 / 3.2 (13 sector format)
+    wozTrackState_D5_AA_96, // sector header
+    wozTrackState_D5_AA_AD, // data block
+    wozTrackState_DE,       // epilogue?
+    wozTrackState_DE_AA,
+    wozTrackState_DE_AA_EB, // epilogue - end of sector
     wozTrackState_vol1,
     wozTrackState_vol2,
     wozTrackState_trk1,
     wozTrackState_trk2,
     wozTrackState_sec1,
     wozTrackState_sec2,
+    wozTrackState_ChkSum,
     wozTrackState_END,
 } wozTrackState_t;
 
@@ -189,23 +246,87 @@ int vol = 0;
 int trk = 0;
 int sec = 0;
 
+extern m6502_t m6502;
+
+// Sector contents.
+static uint8_t contents[343];
+
+// Remove bit 7 to address this table -- we save memory...
+static const uint8_t six_and_two_reverse_mapping[] = {
+//   x0    x1    x2    x3    x4    x5    x6    x7    x8    x9    xA    xB    xC    xD    xE    xF
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8x
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x02, 0x03, 0x00, 0x04, 0x05, 0x06, // 9x
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x08, 0x00, 0x00, 0x00, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, // Ax
+    0x00, 0x00, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x00, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, // Bx
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1B, 0x00, 0x1C, 0x1D, 0x1E, // Cx
+    0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x20, 0x21, 0x00, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, // Dx
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x2A, 0x2B, 0x00, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, // Ex
+    0x00, 0x00, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x00, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, // Fx
+};
+
+
 wozTrackState_t woz_decodeTrkSec( uint8_t data, uint64_t clkelapsed, int bitOffs ) {
     static wozTrackState_t wozTrackState  = wozTrackState_Start;
+    static int databytes = 0;
+    static uint8_t datachksum = 0;
+
+//    printf("*** woz_decodeTrkSec: %02X\n", data);
     
     if ( clkelpased > 40 ) {
         // spent too much time on reading, we cannot reliably decode sector header
         wozTrackState = wozTrackState_Start;
     }
     
+    if ( data < 0x80 ) {
+        return wozTrackState;
+    }
+    
+    
+    switch (data) {
+        case 0xD5:
+            dbgPrintf("*** D5 Sector Marker 1st byte\n");
+            wozTrackState = wozTrackState_D5;
+            bitOffs_D5_SecHdr = bitOffs;
+            break;
+
+        default:
+            break;
+    }
+
+    
     switch (wozTrackState) {
         case wozTrackState_D5:
             switch (data) {
                 case 0xAA:
-//                    printf("D5 AA at bitOffset:%d\n", bitOffs);
+                    dbgPrintf("*** D5 AA Sector Marker 2nd byte\n");
                     wozTrackState = wozTrackState_D5_AA;
                     break;
                     
+                case 0xD5:
+                    // eliminate stateless 1st byte detection treated as a broken marker
+                    break;
+                    
                 default:
+                    dbgPrintf("*** Broken Sector Marker: D5 %02X\n", data);
+                    wozTrackState = wozTrackState_Start;
+                    break;
+            }
+            
+            break;
+            
+        case wozTrackState_DE:
+            switch (data) {
+                case 0xAA:
+                    dbgPrintf("*** DE AA Epilogue Marker 2nd byte\n");
+                    wozTrackState = wozTrackState_DE_AA;
+                    break;
+                    
+                case 0xDE:
+                    // eliminate stateless 1st byte detection treated as a broken marker
+                    break;
+                    
+                default:
+                    dbgPrintf("*** Broken Epilogue Marker: DE %02X\n", data);
                     wozTrackState = wozTrackState_Start;
                     break;
             }
@@ -216,11 +337,41 @@ wozTrackState_t woz_decodeTrkSec( uint8_t data, uint64_t clkelapsed, int bitOffs
             switch (data) {
                 case 0x96:
                     wozTrackState = wozTrackState_vol1;
-//                    printf("D5 AA 96 at bitOffset:%d\n", bitOffs);
-//                    printf("Sector Header at bitOffset:%d\n", bitOffs_D5_SecHdr);
+                    dbgPrintf("*** D5 AA 96 Sector Marker 3rd byte\n");
+                    dbgPrintf("*** Sector Header ***\n");
                     break;
                     
+                case 0xB5:
+                    wozTrackState = wozTrackState_vol1;
+                    dbgPrintf("*** D5 AA B5\n");
+                    dbgPrintf("*** Sector Data (13 sector disk) ***\n");
+                    break;
+
+                case 0xAD:
+                    wozTrackState = wozTrackState_D5_AA_AD;
+                    databytes = 0;
+                    datachksum = 0;
+                    dbgPrintf("*** D5 AA AD\n");
+                    dbgPrintf("*** Sector Data\n");
+                    break;
+
                 default:
+                    dbgPrintf("*** Broken Sector Marker: D5 AA %02X\n", data);
+                    wozTrackState = wozTrackState_Start;
+                    break;
+            }
+            
+            break;
+            
+        case wozTrackState_DE_AA:
+            switch (data) {
+                case 0xEB:
+                    wozTrackState = wozTrackState_DE_AA_EB;
+                    dbgPrintf("*** DE AA EB Sector Epilogue\n");
+                    break;
+
+                default:
+                    dbgPrintf("*** Broken Epilogue Marker: DE AA %02X\n", data);
                     wozTrackState = wozTrackState_Start;
                     break;
             }
@@ -256,19 +407,72 @@ wozTrackState_t woz_decodeTrkSec( uint8_t data, uint64_t clkelapsed, int bitOffs
             sec &= data;
             wozTrackState = wozTrackState_END;
             
-//            printf("Vol:%d Track:%d Sector:%d at bitOffset:%d\n", vol, trk, sec, bitOffs_D5_SecHdr);
+            dbgPrintf("*** Vol:%d Track:%d Sector:%d at bitShift:%d\n", vol, trk, sec, bitOffs_D5_SecHdr);
+            
+            if ((trk == 0) && (sec == 0)) {
+                m6502.interrupt = BREAK;
+            }
             
             break;
             
-        default:
-            if ( data == 0xD5 ) {
-//                printf("D5 at bitOffset:%d\n", bitOffs);
-                wozTrackState = wozTrackState_D5;
-                bitOffs_D5_SecHdr = bitOffs;
+        case wozTrackState_D5_AA_AD: {
+            uint8_t decoded = six_and_two_reverse_mapping[ data &0x7F ];
+            
+#ifdef DEBUG
+            if (decoded & 0xC0) {
+                printf("!!! Vol:%d Track:%d Sector:%d at bitShift:%d\n", vol, trk, sec, bitOffs_D5_SecHdr);
+                printf("!!! WRONG Decoding: %02X -> %02X\n", data, decoded);
+            }
+            
+            if ((decoded == 0x00) && (data != 0x96)) {
+                printf("!!! Vol:%d Track:%d Sector:%d at bitShift:%d  trackOffset:%d\n", vol, trk, sec, bitOffs_D5_SecHdr, trackOffset);
+                printf("!!! WRONG Decoding: %02X -> %02X\n", data, decoded);
+            }
+            
+            if (databytes % 16 == 0) {
+                printf("\n%04X: ", databytes);
+            }
+            
+            // TODO: DEBUG ONLY!!!
+            if ( (trk==0) && (sec==0) && (databytes == 0xF4) ){
+                printf(".");
+            }
+
+            printf("%02X ", data);
+#endif
+
+            datachksum ^= decoded;
+            contents[databytes++] = decoded;
+
+            if (databytes >= 342) {
+                wozTrackState = wozTrackState_ChkSum;
+                dbgPrintf("\n\n*** Vol:%d Track:%d Sector:%d at bitShift:%d\n", vol, trk, sec, bitOffs_D5_SecHdr);
+                dbgPrintf("Data Bytes: %u\n", databytes);
+            }
+            
+            break;
+        }
+
+        case wozTrackState_ChkSum: {
+            wozTrackState = wozTrackState_Start;
+            uint8_t decoded = six_and_two_reverse_mapping[ data &0x7F ];
+            if (datachksum != decoded) {
+                dbgPrintf("!!! Vol:%d Track:%d Sector:%d at bitShift:%d\n", vol, trk, sec, bitOffs_D5_SecHdr);
+                dbgPrintf("!!! Data Checksum: WRONG! %02X vs %02X\n", datachksum, decoded);
             }
             else {
-                wozTrackState = wozTrackState_Start;
+//                printf("Data Checksum: %s %02X vs %02X\n", datachksum == decoded ? "OK" : "WRONG!!!", datachksum, decoded);
             }
+            break;
+        }
+        default:
+            switch (data) {
+                case 0xDE:
+                    dbgPrintf("*** DE Epoligue Marker 1st byte\n");
+                    wozTrackState = wozTrackState_DE;
+                    break;
+            }
+            
             break;
     }
     
@@ -284,10 +488,14 @@ void woz_loadTrack( int track ) {
     prepared_track[0] = reg;
     
     int bitOffs = 0;
-    
+    uint8_t * trkdata = getTrackDataPtr(track);
+
+    // to trigger a status reset
+    woz_decodeTrkSec( 0, 999, bitOffs );
+
     for ( int byteOffs = 0; byteOffs < WOZ1_TRACK_BYTE_COUNT; byteOffs++ ) {
 
-        reg.data = (*woz_trks)[track].data[ byteOffs ];
+        reg.data = trkdata[ byteOffs ];
 
         for ( int i = 0; i < 8; i++ ) {
             reg.shift16 <<= 1;
@@ -305,20 +513,27 @@ void woz_loadTrack( int track ) {
 
 // number needs to be unsigned to work with these macros
 INLINE unsigned woz_incTrackOffset( unsigned ofs, unsigned limit) {
+//    if (++ofs >= limit) {
+//        ofs = 0;
+//    }
+//    return ofs;
     return (ofs + 1) % limit;
 }
 
 INLINE uint8_t woz_readByte(unsigned trk, unsigned ofs) {
-    return (*woz_trks)[trk].data[ofs];
+    uint8_t * trkdata = getTrackDataPtr(trk);
+
+    return trkdata[ofs];
 }
+
 
 uint8_t woz_read(void) {
 
-    if ( woz_tmap && woz_trks ) {
+    if ( woz_tmap && woz1_trks ) {
         int track = woz_tmap->phase[disk.phase.count];
-        dbgPrintf2("track: %d (%d)\n", track, disk.phase.count);
+        dbgPrintf2("*** track: %d (%d)\n", track, disk.phase.count);
         if ( track >= 40 ) {
-            dbgPrintf("TRCK TOO HIGH!\n");
+            dbgPrintf("*** TRCK TOO HIGH!\n");
             return rand();
         }
         
@@ -328,7 +543,7 @@ uint8_t woz_read(void) {
         clkelpased = clktime - m6502.clklast;
         m6502.clklast = clktime;
         
-        uint16_t usedBytes = (*woz_trks)[track].bytes_used < WOZ1_TRACK_BYTE_COUNT ? (*woz_trks)[track].bytes_used : WOZ1_TRACK_BYTE_COUNT;
+        uint16_t usedBytes = getTrackBytesUsed(track);
         
         if ( usedBytes ) {
 //            static const int extraForward = 4; // we search for 7 bit high a bit further to speed up disk read...
@@ -339,13 +554,23 @@ uint8_t woz_read(void) {
             
             // Simulate idle spinning until a close point to the actual turn position
             while ( bitForward-- ) {
-                if ( ++bitOffset > 7 ) {
-                    bitOffset = 0;
+                bitOffset++;
+                bitShift++;
+                
+                if (( bitShift > 7 ) || (bitOffset > getTrackBitsUsed(track))) {
+//                if ( bitShift > 7 ) {
+                    if (bitOffset > getTrackBitsUsed(track)) {
+                        bitOffset = 0;
+                    }
+                    
+                    bitShift = 0;
+                    
                     trackOffset = woz_incTrackOffset(trackOffset, usedBytes);
                     
                     WOZwrite.data =
                     WOZread.data = woz_readByte(track, trackOffset);
-//if (outdev) fprintf(outdev, "(%02X.%u:%u):   d:%02X\n", track, trackOffset, bitOffset, WOZread.data);
+//if (outdev) fprintf(outdev, "(%02X.%u:%u):   d:%02X\n", track, trackOffset, bitShift, WOZread.data);
+//                    printf("[%02X] ", WOZread.data);
                 }
                 
                 WOZread.shift <<= 1;
@@ -353,19 +578,23 @@ uint8_t woz_read(void) {
 
                 if ( WOZread.valid ) {
                     latch = WOZread.latch;
-//if (outdev) fprintf(outdev, "(%02X.%u:%u):   r:%02X\n", track, trackOffset, bitOffset, WOZread.latch);
+//if (outdev) fprintf(outdev, "(%02X.%u:%u):   r:%02X\n", track, trackOffset, bitShift, WOZread.latch);
                     // latch is cleared when bit 7 is high
 //                    WOZwrite.latch =
                     WOZread.latch = 0;
                     // but we do not want to miss that latch valid nibble...
                     // in other words synchronization is needed because of imperfect cycle calculation
-                    if ( bitForward < 18 ) { // for 30 Hz FPS 18 is better ) {
+                    if ( bitForward < 100 ) { // for 30 Hz FPS 18 is better ) {
+//                        printf("*** latch: %02X\n", latch);
+                        woz_decodeTrkSec( latch, 0, bitShift );
                         return latch;
                     }
                 }
             }
 
             // return nibble
+//            printf("*** WOZread.latch: %02X\n", WOZread.latch);
+//            woz_decodeTrkSec( WOZread.latch, 0, bitShift );
             return WOZread.latch;
         }
     }
@@ -400,8 +629,10 @@ void printWozBuffer (const char * s, int n, WOZread_t WOZbuf ) {
 
 
 void woz_write( uint8_t data ) {
-    if ( woz_tmap && woz_trks ) {
+    if ( woz_tmap && woz1_trks ) {
         int track = woz_tmap->phase[disk.phase.count];
+        uint8_t * trkdata = getTrackDataPtr(track);
+
 //if (outdev) fprintf(outdev, "track: %d (%d)\n", track, disk.phase.count);
         if ( track >= 40 ) {
             dbgPrintf("TRACK TOO HIGH!\n");
@@ -414,12 +645,13 @@ void woz_write( uint8_t data ) {
         clkelpased = clktime - m6502.clklast;
         m6502.clklast = clktime;
         
-        uint16_t usedBytes = (*woz_trks)[track].bytes_used < WOZ1_TRACK_BYTE_COUNT ? (*woz_trks)[track].bytes_used : WOZ1_TRACK_BYTE_COUNT;
+        uint32_t usedBits = getTrackBitsUsed(track);
+        uint16_t usedBytes = getTrackBytesUsed(track);
         
         if ( usedBytes ) {
             uint64_t bitForward = (clkelpased >> 2) + 1;
             
-//            uint64_t bitOffsShouldBe = (bitOffset + bitForward) % 8;
+//            uint64_t bitOffsShouldBe = (bitShift + bitForward) % 8;
 //            uint64_t trkOffsShouldBe = (trackOffset + bitForward / 8) % usedBytes;
 
 //if (outdev) fprintf(outdev, "[%02X.%llu:%llu]: *:%02X\n", track, trkOffsShouldBe, bitOffsShouldBe, data);
@@ -430,20 +662,20 @@ void woz_write( uint8_t data ) {
 
 //printf("(");
             // Simulate idle spinning until s close point to the actual turn position
-                while ( bitForward-- ) {
-                if ( ++bitOffset > 7 ) {
-                        bitOffset = 0;
+            while ( bitForward-- ) {
+                if ( ++bitShift > 7 ) {
+                    bitShift = 0;
                     trackOffset = woz_incTrackOffset(trackOffset, usedBytes);
 
                     WOZwrite.data =
                     WOZread.data = woz_readByte(track, trackOffset);
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   d:%02X (%016llX)\n", track, trackOffset, bitOffset, WOZwrite.data, WOZwrite.shift);
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   d:%02X (%016llX)\n", track, trackOffset, bitShift, WOZwrite.data, WOZwrite.shift);
 
                     trackNextOffset = woz_incTrackOffset(trackOffset, usedBytes);
 
                     // load original following data
                     WOZwrite.next = woz_readByte(track, trackNextOffset);
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   n:%02X (%016llX)\n", track, trackNextOffset, bitOffset, WOZwrite.next,  WOZwrite.shift);
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   n:%02X (%016llX)\n", track, trackNextOffset, bitShift, WOZwrite.next,  WOZwrite.shift);
                     
                     }
 
@@ -451,7 +683,7 @@ void woz_write( uint8_t data ) {
                     WOZwrite.shift <<= 1;
 
                     if ( WOZread.valid ) {
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   r:%02X (%016llX) {%llu}\n", track, trackOffset, bitOffset, WOZwrite.latch, WOZwrite.shift, bitForward);
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   r:%02X (%016llX) {%llu}\n", track, trackOffset, bitShift, WOZwrite.latch, WOZwrite.shift, bitForward);
 //printf("%2X ", WOZread.latch);
                     
                     // we do not clear write latch as we need that
@@ -468,22 +700,22 @@ void woz_write( uint8_t data ) {
             
             // feed write buffer
             WOZwrite.latch = data;
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   D:%02X (%016llX)\n", track, trackNextOffset, bitOffset, WOZwrite.latch,  WOZwrite.shift);
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   D:%02X (%016llX)\n", track, trackNextOffset, bitShift, WOZwrite.latch,  WOZwrite.shift);
 
             // shift to byte alignment so we can write to the byte stream
-            WOZwrite.shift >>= bitOffset + 1;
+            WOZwrite.shift >>= bitShift + 1;
             
             // write out upper part
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   R:%02X -> %02X (%016llX)\n", track, trackOffset, 0, (*woz_trks)[track].data[trackOffset], WOZwrite.latch,  WOZwrite.shift);
-            (*woz_trks)[track].data[trackOffset] = WOZwrite.latch;
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   R:%02X -> %02X (%016llX)\n", track, trackOffset, 0, trkdata[trackOffset], WOZwrite.latch,  WOZwrite.shift);
+            trkdata[trackOffset] = WOZwrite.latch;
 
             // write out lower part
-//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   R:%02X -> %02X (%016llX)\n", track, trackNextOffset, 0, (*woz_trks)[track].data[trackNextOffset], WOZwrite.data, WOZwrite.shift);
+//if (outdev) fprintf(outdev, "[%02X.%u:%u]:   R:%02X -> %02X (%016llX)\n", track, trackNextOffset, 0, trkdata[trackNextOffset], WOZwrite.data, WOZwrite.shift);
             trackNextOffset = woz_incTrackOffset(trackOffset, usedBytes);
-            (*woz_trks)[track].data[trackNextOffset] = WOZwrite.data;
+            trkdata[trackNextOffset] = WOZwrite.data;
 
             // shift back to actual bit alignment
-            WOZwrite.shift <<= bitOffset + 1;
+            WOZwrite.shift <<= bitShift + 1;
         }
     }
 }
@@ -495,7 +727,8 @@ void woz_free_buffer(void) {
         woz_file_buffer = NULL;
         woz_header = NULL;
         woz_tmap = NULL;
-        woz_trks = NULL;
+        woz1_trks = NULL;
+        woz2_trks = NULL;
     }
 }
 
@@ -561,7 +794,8 @@ int woz_parseBuffer(void) {
                 break;
 
             case WOZ_TRKS_CHUNK_ID:
-                woz_trks = (woz1_trks_t*) &woz_file_buffer[bufOffs];
+                woz1_trks = (woz1_trks_t*) &woz_file_buffer[bufOffs];
+                woz2_trks = (woz2_trks_t*) &woz_file_buffer[bufOffs];
                 break;
 
             case WOZ_META_CHUNK_ID:

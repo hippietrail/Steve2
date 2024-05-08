@@ -341,9 +341,11 @@ class HiRes: NSView {
         
         switch ( pixel ) {
         case 1: // purple (bits are in reverse!)
+            pixelsSRGB[colorAddr - 1] = color_purple
+            pixelsSRGB[colorAddr - 2] = color_purple
             pixelsSRGB[colorAddr]     = color_purple
             pixelsSRGB[colorAddr + 1] = color_purple
-            pixelsSRGB[colorAddr + 2] = color_purple
+//            pixelsSRGB[colorAddr + 2] = color_purple
             if  (colorAddr >= 2) && (prev != 0x03) && (prev != 0x07) && (prev != 0x00) && (prev != 0x04) {
                 pixelsSRGB[colorAddr - 1] = color_purple
                 pixelsSRGB[colorAddr - 2] = color_purple
@@ -351,10 +353,10 @@ class HiRes: NSView {
             
         case 2: // green
             // reducing color bleeding
-            if (colorAddr > 1) && (pixelsSRGB[colorAddr - 2] != color_black) {
+            if (colorAddr > 1) && ((pixelsSRGB[colorAddr - 2] == color_green) || (pixelsSRGB[colorAddr - 2] == color_white)) {
                 pixelsSRGB[colorAddr + 0] = color_green
             }
-            pixelsSRGB[colorAddr]     = color_green
+//            pixelsSRGB[colorAddr]     = color_green
             pixelsSRGB[colorAddr + 1] = color_green
             pixelsSRGB[colorAddr + 2] = color_green
             pixelsSRGB[colorAddr + 3] = color_green
@@ -371,7 +373,7 @@ class HiRes: NSView {
             pixelsSRGB[colorAddr + 1] = color_white
             pixelsSRGB[colorAddr + 2] = color_white
             pixelsSRGB[colorAddr + 3] = color_white
-            pixelsSRGB[colorAddr + 4] = color_white
+//            pixelsSRGB[colorAddr + 4] = color_white
 
         case 5: // blue
             pixelsSRGB[colorAddr + 1] = color_blue
@@ -386,8 +388,8 @@ class HiRes: NSView {
             // reducing color bleeding
             if (colorAddr > 0) && (pixelsSRGB[colorAddr - 2] != color_black) {
                 pixelsSRGB[colorAddr + 0] = color_orange // important for color bleeding and color contiunity
-                pixelsSRGB[colorAddr + 1] = color_orange
             }
+            pixelsSRGB[colorAddr + 1] = color_orange
             pixelsSRGB[colorAddr + 2] = color_orange
             pixelsSRGB[colorAddr + 3] = color_orange
             pixelsSRGB[colorAddr + 4] = color_orange
@@ -397,11 +399,12 @@ class HiRes: NSView {
 //                pixelsSRGB[colorAddr - 2] = color_white // HiRes.pixelsSRGB[colorAddr - 2]
                 pixelsSRGB[colorAddr - 1] = color_white
             }
+            pixelsSRGB[colorAddr - 1] = color_white
             pixelsSRGB[colorAddr + 0] = color_white // Donkey Kong would be perfect but problem in Sneakers
             pixelsSRGB[colorAddr + 1] = color_white
             pixelsSRGB[colorAddr + 2] = color_white
             pixelsSRGB[colorAddr + 3] = color_white
-            pixelsSRGB[colorAddr + 4] = color_white
+//            pixelsSRGB[colorAddr + 4] = color_white
 
         case 0: // 0x00 (black 1), 0x04 (black 2)
 //            pixelsSRGB[colorAddr + 0] = color_black

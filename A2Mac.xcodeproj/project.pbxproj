@@ -639,6 +639,7 @@
 		32440BA22480D5C0000F9DA1 /* LoRes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LoRes.swift; sourceTree = "<group>"; };
 		324D15D224ADAC71008AAFB0 /* floppy.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = floppy.png; sourceTree = "<group>"; };
 		32544194264A6C1600B7E3ED /* DisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayView.swift; sourceTree = "<group>"; };
+		32583B682B5CAD8700A45F0A /* woz_debug.rtf */ = {isa = PBXFileReference; lastKnownFileType = text.rtf; path = woz_debug.rtf; sourceTree = "<group>"; };
 		325B75DF2909F95000B29605 /* 6502_dbg.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = 6502_dbg.c; sourceTree = "<group>"; };
 		325B7652290A32CC00B29605 /* 6502_dbg.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = 6502_dbg.h; sourceTree = "<group>"; };
 		325DC40D24AC5ABC00EB8858 /* doc.on.doc.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = doc.on.doc.png; sourceTree = "<group>"; };
@@ -1148,6 +1149,7 @@
 		32BFFB4E22EACC630003B53F = {
 			isa = PBXGroup;
 			children = (
+				32583B682B5CAD8700A45F0A /* woz_debug.rtf */,
 				32D08991291AF23500F2B486 /* Debug.storyboard */,
 				326426112328ADF4008B615F /* Apple_II_ROM.s */,
 				325EB63123F8861A00C6B4A4 /* src */,

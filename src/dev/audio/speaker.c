@@ -106,8 +106,9 @@ int spkr_last_level = SPKR_LEVEL_ZERO;
 //static const int ema_len_soft = 64;
 //static const int ema_len_supersoft = 80;
 
-int spkr_ema_len = 640; // with EMA
-int spkr_ema3_len = 50; // with EMA3
+int spkr_ema_len = 70; // with EMA
+int spkr_ema3_len = 30; // with EMA3
+int spkr_ehler_len = 100; // 50; // with Ehler's Super Smoother Filter
 
 
 #define BUFFER_COUNT 32
@@ -290,6 +291,8 @@ static void spkr_debug(FILE * file) {
 #endif
 
 
+void ehler_init(const int val, const int cutoffLength);
+
 // initialize OpenAL
 void spkr_init(void) {
     const char *defname = alcGetString(NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
@@ -387,6 +390,8 @@ void spkr_init(void) {
 
     // make sure we have free buffers initialized here
     freeBuffers = BUFFER_COUNT;
+    
+    ehler_init(0, spkr_ehler_len);
 }
 
 
@@ -785,6 +790,54 @@ INLINE static const double t3_new(
 }
 
 
+// Ehler's constants -- must be initialized
+static double a1 = 0;
+static double coeff2 = 0;
+static double coeff3 = 0;
+static double coeff1 = 0;
+
+// Ehler's variables
+static int val1 = 0;
+static int filt = 0;
+static int filt1 = 0;
+static int filt2 = 0;
+
+/// Initializer for the Ehlers' Super Smoother Filter
+/// @param val Current value the filter is applied
+/// @param cutoffLength Maximum period for a wave cycle to be considered noise
+void ehler_init(const int val, const int cutoffLength) {
+    a1 = exp((-M_PI) * M_SQRT2 / cutoffLength);
+    coeff2 = 2 * a1 * cos(M_SQRT2 * M_PI / cutoffLength);
+    coeff3 = -(a1 * a1);
+    coeff1 = 1 - coeff2 - coeff3;
+    
+    val1 = val;
+    filt = val;
+    filt1 = val;
+    filt2 = val;
+}
+
+/// The Ehlers' Super Smoother Filter is a smoothing technique developed by John F. Ehlers, based on aerospace analog filters. This filter aims at reducing noise in price data, which appears to be stronger as the high-to-low price swings increase especially when chart is plotted for greater time intervals. In theory, this filter eliminates the noise completely, as opposed to moving averages, e.g., exponential (EMA) which only offers a modest attenuation effect.
+///
+/// Regardless of the time frame used, all waves having cycles of less than 10 bars are considered noise. Thus, the filter only passes those spectral components whose periods are greater than 10 bars. Note that the period of 10 bars is a default value which can be customized using the cutoff length input parameter.
+/// @param val Current value the filter is applied
+/// @param cutoffLength Maximum period for a wave cycle to be considered noise - This is moved to the ehler_init()
+INLINE static const int ehler(const int val) {
+//    // cutoff must be positive
+//    if (cutoffLength < 0) {
+//        return val;
+//    }
+    
+    val1 = val;
+    filt2 = filt1;
+    filt1 = filt;
+
+    filt = coeff1 * (val + val1) / 2 + coeff2 * filt1 + coeff3 * filt2;
+    
+    return filt;
+}
+
+
 INLINE static void spkr_filter_ema(spkr_sample_t * buf, const int buf_size) {
     for ( int i = 0; i < buf_size; ) {
         spkr_level_ema  = ema(buf[i], spkr_level_ema, spkr_ema_len);
@@ -874,6 +927,20 @@ INLINE static void spkr_filter_t3(spkr_sample_t * buf, const int buf_size) {
 }
 
 
+INLINE static void spkr_filter_ehler(spkr_sample_t * buf, const int buf_size) {
+    for ( int i = 0; i < buf_size; ) {
+        const int level = ehler(buf[i]);
+
+        // smoothing with Ehler's Super Smoother Filter
+        buf[i++] = level;
+        buf[i++] = level;
+    }
+
+    // Debug SPKR Buffer After EMA
+    spkr_debug(spkr_debug_ema_file);
+}
+
+
 #ifdef SPKR_FILTER_SMA
 INLINE static void spkr_filter_sma(int buf_len) {
     static const unsigned sma_len = 35;
@@ -899,9 +966,44 @@ INLINE static void spkr_filter_sma(int buf_len) {
 
 
 #ifdef SPKR_OVERSAMPLING
+#define DOWNSAMPLE_EMA
 INLINE static spkr_sample_t spkr_avg(const spkr_sample_t * buf, const int len) {
-    long sum = 0;
 
+#ifdef DOWNSAMPLE_TEMA
+    static int level = buf[0];
+    static int ema1 = SPKR_LEVEL_ZERO;
+    static int ema2 = SPKR_LEVEL_ZERO;
+    static int ema3 = SPKR_LEVEL_ZERO;
+
+    // get the sum for that section
+    for (int i = 0; i < len; i++) {
+        ema1  = ema(buf[i * SPKR_CHANNELS], ema1, spkr_ema_len);
+        ema2  = ema(ema1, ema2, spkr_ema_len);
+        ema3  = ema(ema2, ema3, spkr_ema_len);
+        
+        // smoothing with TEMA
+        double level = tema(ema1, ema2, ema3);
+    }
+
+    return level;
+#endif
+
+
+#ifdef DOWNSAMPLE_EMA
+    static int level = SPKR_LEVEL_ZERO; // buf[0];
+    
+    // get the sum for that section
+    for (int i = 0; i < len; i++) {
+        level = ema(buf[ i * SPKR_CHANNELS ], level, len);
+    }
+    
+    return level;
+#endif
+    
+    
+#ifdef DOWNSAMPLE_SMA
+    long sum = 0;
+    
     // get the sum for that section
     for (int i = 0; i < len; i++) {
         sum += buf[ i * SPKR_CHANNELS ];
@@ -909,9 +1011,11 @@ INLINE static spkr_sample_t spkr_avg(const spkr_sample_t * buf, const int len) {
 
     // get the average for that section
     return sum / len;
+#endif
 }
 
 
+#ifdef SPKR_AVG_NEW
 INLINE static spkr_sample_t spkr_avg_new(const spkr_sample_t * buf, int len) {
     long sum = 0;
 
@@ -939,6 +1043,7 @@ INLINE static spkr_sample_t spkr_avg_new(const spkr_sample_t * buf, int len) {
 
     return 0;
 }
+#endif
 
 
 INLINE static void spkr_downsample(void) {
@@ -962,12 +1067,16 @@ INLINE static void spkr_filter(void) {
     
 
 #ifdef SPKR_OVERSAMPLING
-//    spkr_filter_ema( spkr_samples, SPKR_BUF_SIZE );
-    spkr_filter_ema3( spkr_samples, SPKR_BUF_SIZE );
+    spkr_filter_ema( spkr_samples, SPKR_BUF_SIZE );
 //    spkr_filter_dema( spkr_samples, SPKR_BUF_SIZE );
 //    spkr_filter_tema( spkr_samples, SPKR_BUF_SIZE );
 //    spkr_filter_t3( spkr_samples, SPKR_BUF_SIZE );
+    
+    // The two filters together with the down sampling give you a smooth but crystal sound
+//    spkr_filter_ema3( spkr_samples, SPKR_BUF_SIZE ); // this will do a prelimenary filtering
+    spkr_filter_ehler( spkr_samples, SPKR_BUF_SIZE ); // it smooths out very high frequencies.
     spkr_downsample();
+    
 //    spkr_filter_ema( spkr_stream, SPKR_STRM_SLOT_SIZE(1) );
 #else
     spkr_filter_ema( spkr_samples, SPKR_BUF_SIZE );
