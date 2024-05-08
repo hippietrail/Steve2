@@ -32,7 +32,8 @@
 
 #define WOZ1_FILE_SIZE 233216
 
-#define DISKII_MAXTRACKS 80
+#define WOZ1_MAXTRACKS 80
+#define WOZ2_MAXTRACKS 160
 #define DISKII_PHASES 4
 
 #define WOZ1_MAGIC  0x315A4F57
@@ -54,7 +55,13 @@
 #pragma pack(1)
 
 typedef struct woz_header_s {
-    uint32_t    magic;
+    union {
+        struct {
+            char    woz_name [3];   // should be "WOZ"
+            char    woz_version;    // currently "1" (0x31) or "2" (0x32)
+        };
+        uint32_t    magic;
+    };
     union {
         struct {
             uint8_t     no7;
@@ -73,8 +80,9 @@ typedef struct woz_chunk_header_s {
 // chunk data only
 typedef struct woz_info_s {
     uint8_t     version;                // Version number of the INFO chunk.
-                                        //      WOZ1 version is 1
-                                        //      WOZ2 version is 2
+                                        //      WOZ1 => 1
+                                        //      WOZ2 => 2
+                                        //      WOZ 2.1 => 3
     uint8_t     disk_type;              // 1 = 5.25, 2 = 3.5
     uint8_t     is_write_protected;     // 1 = Floppy is write protected
     uint8_t     sync;                   // 1 = Cross track sync
@@ -109,7 +117,7 @@ typedef struct woz_info_s {
 
 // chunk data only
 typedef struct woz_tmap_s {
-    uint8_t     phase [DISKII_MAXTRACKS * DISKII_PHASES];
+    uint8_t     phase [WOZ1_MAXTRACKS * DISKII_PHASES];
 } woz_tmap_t;
 
 #define WOZ1_TRACK_BYTE_COUNT 6646
@@ -117,7 +125,7 @@ typedef struct woz_tmap_s {
 
 // chunk data only
 
-typedef struct woz1_track_s {
+typedef struct woz1_trk_s {
     uint8_t     data [WOZ1_TRACK_BYTE_COUNT];
     uint16_t    bytes_used;
     uint16_t    bit_count;
@@ -125,7 +133,7 @@ typedef struct woz1_track_s {
     uint8_t     splice_nibble;
     uint8_t     splice_bit_count;
     uint16_t    reserved;
-} woz1_track_t;
+} woz1_trk_t;
 
 
 typedef struct woz2_trk_s {
@@ -138,18 +146,9 @@ typedef struct woz2_trk_s {
 
 #define WOZ_MAX_TRK     160
 
-typedef struct woz2_track_s {
-    uint8_t     trks [WOZ_MAX_TRK];
-    uint16_t    bytes_used;
-    uint16_t    bit_count;
-    uint16_t    splice_point;
-    uint8_t     splice_nibble;
-    uint8_t     splice_bit_count;
-    uint16_t    reserved;
-} woz2_track_t;
-
 // chunk data only
-typedef woz1_track_t woz1_trks_t[DISKII_MAXTRACKS];
+typedef woz1_trk_t woz1_trks_t[WOZ1_MAXTRACKS];
+typedef woz2_trk_t woz2_trks_t[WOZ2_MAXTRACKS];
 
 #pragma pack(pop)
 

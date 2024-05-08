@@ -25,5 +25,6 @@
 #define dsk2woz_h
 
 int dsk2woz( const char * filename );
+extern void encode_6_and_2(uint8_t *dest, const uint8_t *src);
 
 #endif /* dsk2woz_h */

@@ -343,7 +343,7 @@ static size_t write_sync(uint8_t *buffer, size_t position) {
 	@param dest The at-least-343 byte buffer to which the encoded sector is written.
 	@param src The 256-byte source data.
 */
-static void encode_6_and_2(uint8_t *dest, const uint8_t *src) {
+void encode_6_and_2(uint8_t *dest, const uint8_t *src) {
 	const uint8_t six_and_two_mapping[] = {
 		0x96, 0x97, 0x9a, 0x9b, 0x9d, 0x9e, 0x9f, 0xa6,
 		0xa7, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb2, 0xb3,
