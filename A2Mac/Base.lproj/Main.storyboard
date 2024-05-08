@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="22155" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="32700.99.1234" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
     <dependencies>
         <deployment identifier="macosx"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22155"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22689"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -1499,7 +1499,7 @@ Gw
                                     <popUpButton key="view" id="Ktw-L6-kEz">
                                         <rect key="frame" x="0.0" y="14" width="43" height="30"/>
                                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
-                                        <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="Joystick" imagePosition="only" alignment="right" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" id="A4p-LJ-svz">
+                                        <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="popUpButtonCell:A4p-LJ-svz:image" imagePosition="only" alignment="right" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" id="A4p-LJ-svz">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                             <font key="font" metaFont="menu"/>
                                             <menu key="menu" id="q8R-kX-3jc">
@@ -1799,7 +1799,7 @@ Gw
                                 <textFieldCell key="cell" lineBreakMode="truncatingTail" enabled="NO" refusesFirstResponder="YES" allowsUndo="NO" sendsActionOnEndEditing="YES" state="on" focusRingType="none" baseWritingDirection="leftToRight" title="Background" drawsBackground="YES" id="cIa-Sd-4OZ">
                                     <font key="font" metaFont="system"/>
                                     <color key="textColor" red="0.078431372549019607" green="0.10980392156862745" blue="0.078431372549019607" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                    <color key="backgroundColor" red="0.078431372549019607" green="0.10980392156862745" blue="0.078431372549019607" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                    <color key="backgroundColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                                     <allowedInputSourceLocales>
                                         <string>NSAllRomanInputSourcesLocaleIdentifier</string>
                                     </allowedInputSourceLocales>
@@ -1895,7 +1895,7 @@ Gw
                                         </textFieldCell>
                                     </textField>
                                     <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="w41-S5-cTL" userLabel="Prompt">
-                                        <rect key="frame" x="16" y="503" width="23" height="15"/>
+                                        <rect key="frame" x="16" y="503" width="22" height="15"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" refusesFirstResponder="YES" focusRingType="none" title="]" id="CYs-wL-6Pf">
                                             <font key="font" metaFont="cellTitle"/>
                                             <color key="textColor" red="0.18823529411764706" green="0.83529411764705885" blue="0.84705882352941175" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
@@ -1948,7 +1948,7 @@ Gw
                                         <subviews>
                                             <popUpButton translatesAutoresizingMaskIntoConstraints="NO" id="49f-8R-QCc" userLabel="Disk1 Button">
                                                 <rect key="frame" x="-5" y="75" width="109" height="99"/>
-                                                <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="popUpButtonCell:CNs-lh-urM:image" imagePosition="only" alignment="left" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" altersStateOfSelectedItem="NO" id="CNs-lh-urM" userLabel="Disk1 Pop Up Button Cell">
+                                                <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="popUpButtonCell:A4p-LJ-svz:image" imagePosition="only" alignment="left" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" altersStateOfSelectedItem="NO" id="CNs-lh-urM" userLabel="Disk1 Pop Up Button Cell">
                                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                                     <font key="font" metaFont="menu"/>
                                                     <menu key="menu" id="N33-K0-nba" userLabel="Disk1 Menu">
@@ -2000,7 +2000,7 @@ Gw
                                             </popUpButton>
                                             <popUpButton translatesAutoresizingMaskIntoConstraints="NO" id="QDr-Cp-9QQ" userLabel="Disk2 Button">
                                                 <rect key="frame" x="-5" y="0.0" width="109" height="99"/>
-                                                <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="popUpButtonCell:CNs-lh-urM:image" imagePosition="only" alignment="left" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" altersStateOfSelectedItem="NO" selectedItem="28N-X8-n7Q" id="8FA-1D-k8p">
+                                                <popUpButtonCell key="cell" type="bevel" bezelStyle="regularSquare" image="popUpButtonCell:A4p-LJ-svz:image" imagePosition="only" alignment="left" lineBreakMode="truncatingTail" refusesFirstResponder="YES" imageScaling="proportionallyUpOrDown" inset="2" pullsDown="YES" arrowPosition="noArrow" altersStateOfSelectedItem="NO" selectedItem="28N-X8-n7Q" id="8FA-1D-k8p">
                                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                                     <font key="font" metaFont="menu"/>
                                                     <menu key="menu" id="8He-mk-LVI">
@@ -2415,11 +2415,11 @@ Gw
         <image name="Debugger" width="32" height="32"/>
         <image name="Green" width="32" height="32"/>
         <image name="Joystick" width="32" height="32"/>
-        <image name="NSActionTemplate" width="20" height="20"/>
+        <image name="NSActionTemplate" width="19" height="19"/>
         <image name="NSListViewTemplate" width="21" height="15"/>
-        <image name="NSTouchBarAudioOutputMuteTemplate" width="16" height="19"/>
+        <image name="NSTouchBarAudioOutputMuteTemplate" width="17" height="20"/>
         <image name="NSTouchBarAudioOutputVolumeLowTemplate" width="20" height="18"/>
-        <image name="NSTouchBarAudioOutputVolumeMediumTemplate" width="23" height="18"/>
+        <image name="NSTouchBarAudioOutputVolumeMediumTemplate" width="24" height="18"/>
         <image name="NSTouchBarGoDownTemplate" width="18" height="11"/>
         <image name="NSTouchBarGoForwardTemplate" width="12" height="17"/>
         <image name="NSTouchBarGoUpTemplate" width="18" height="11"/>
@@ -139134,7 +139134,7 @@ fRFJAH0RSwB9EU0AfSLtAH0i8gB9Iv8AfSMCAH0jDwB9IxQAfSMcAH0jHwB9IyQAfSMsAAAAAAAABAEA
 AAAAAAAAUQAAAAAAAAAAAAAAAAB9Iy8
 </mutableData>
         </image>
-        <image name="popUpButtonCell:CNs-lh-urM:image" width="1" height="1">
+        <image name="popUpButtonCell:A4p-LJ-svz:image" width="1" height="1">
             <mutableData key="keyedArchiveRepresentation">
 YnBsaXN0MDDUAQIDBAUGBwpYJHZlcnNpb25ZJGFyY2hpdmVyVCR0b3BYJG9iamVjdHMSAAGGoF8QD05T
 S2V5ZWRBcmNoaXZlctEICVRyb290gAGvEBcLDBkaIRQmKywzNjs+P0RHSEtVXV5iZVUkbnVsbNYNDg8Q
